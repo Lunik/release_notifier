@@ -1,0 +1,6 @@
+# Release checker
+
+- GITHUB_TOKEN_AUTH="<USER>:<TOKEN>"
+- GITLAB_TOKEN_AUTH="<TOKEN>"
+- SMS_API_USER="<USER>"
+- SMS_API_TOKEN="<TOKEN>"

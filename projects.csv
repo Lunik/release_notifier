@@ -1,0 +1,14 @@
+github,traefik/traefik,v2.4.7
+github,go-gitea/gitea,v1.13.4
+github,dani-garcia/bitwarden_rs,1.19.0
+github,minio/minio,RELEASE.2021-03-04T00-53-13Z
+gitlab,gitlab-org/gitlab-foss,v13.9.0
+github,Requarks/wiki,2.5.170
+github,k9mail/k-9,5.732
+github,nextcloud/server,v20.0.4
+github,kubernetes/kubernetes,v1.21.0-beta.0
+github,pi-hole/pi-hole,v5.2.4
+github,openzfs/zfs,zfs-2.0.3
+github,k3s-io/k3s,v1.20.4+k3s1
+github,pi-hole/FTL,v5.7
+github,ansible/ansible,v2.5.0b1

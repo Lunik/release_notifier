@@ -1,0 +1,174 @@
+#!/bin/bash
+
+###################
+## CONFIGURATION ##
+###################
+SOURCEDIR=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
+
+PROJECT_LIST="${SOURCEDIR}/projects.csv"
+GITHUB_API_ENDPOINT="https://api.github.com"
+GITLAB_API_ENDPOINT="https://gitlab.com/api/v4"
+SMS_API_ENDPOINT="https://smsapi.free-mobile.fr"
+
+################
+## DEFINITION ##
+################
+
+function sms_check_auth() {
+  if [ -z "${SMS_API_USER}" ]; then
+    echo "Missing SMS username"
+    echo "Export SMS_API_USER before launching the script"
+    exit 1
+  fi
+
+  if [ -z "${SMS_API_TOKEN}" ]; then
+    echo "Missing SMS username"
+    echo "Export SMS_API_TOKEN before launching the script"
+    exit 1
+  fi
+}
+
+function encode_message() {
+  message="$1"
+
+  python3 -c "import sys, urllib.parse as ul; \
+    print (ul.quote_plus(sys.argv[1]))" "${message}"
+}
+
+function notify() {
+  project="$1"
+  version="$2"
+  url="$3"
+
+  message=$(encode_message "New version found for ${project} : \"${version}\". ${url}")
+
+  curl -sSL \
+    -X POST \
+    "${SMS_API_ENDPOINT}/sendmsg?user=${SMS_API_USER}&pass=${SMS_API_TOKEN}&msg=${message}"
+}
+
+####################
+
+function github_check_auth() {
+  if [ -z "${GITHUB_TOKEN_AUTH}" ]; then
+    echo "Missing GitHub authentification"
+    echo "Export GITHUB_TOKEN_AUTH before launching the script"
+    echo "With format <USER>:<TOKEN>"
+    exit 1
+  fi
+}
+
+function github_get_release() {
+  project="$1"
+
+  curl -sSL \
+    -H "Accept: application/vnd.github.v3+json" \
+    -u "${GITHUB_TOKEN_AUTH}" \
+    "${GITHUB_API_ENDPOINT}/repos/${project}/releases?per_page=1" | jq -r '.[0]'
+}
+
+function github_check_release() {
+  project="$1"
+  release="$2"
+
+  last_version=$(cat "${PROJECT_LIST}" | grep "${project}" | awk -F',' '{ print $3 }')
+  version=$(echo "${release}" | jq -r '.tag_name')
+
+  if [ "${last_version}" != "${version}" ]; then
+    echo "New version found for ${project}: ${version}"
+    url=$(echo "${release}" | jq -r '.html_url')
+
+    notify "${project}" "${version}" "${url}"
+
+    clean_project=$(echo "${project}" | sed -e 's/\//\\\//g')
+    sed -i 's/,\('${clean_project}'\),[^,]*$/,\1,'${version}'/g' "${PROJECT_LIST}"
+  fi
+}
+
+function github_check_projects() {
+  github_projects="$1"
+
+  while read project; do
+    project=$(echo "${project}" | awk -F',' '{ print $2 }')
+    echo "Checking : ${project}"
+
+    release=$(github_get_release "${project}")
+
+    github_check_release "${project}" "${release}"
+  done <<< "${github_projects}"
+}
+
+####################
+
+function gitlab_check_auth() {
+  if [ -z "${GITLAB_TOKEN_AUTH}" ]; then
+    echo "Missing GitLab authentification"
+    echo "Export GITLAB_TOKEN_AUTH before launching the script"
+    echo "With format <TOKEN>"
+    exit 1
+  fi
+}
+
+function gitlab_get_release() {
+  project=$(encode_message "$1")
+
+  curl -sSL \
+    -H "Accept: application/vnd.github.v3+json" \
+    -H "Authorization: Bearer ${GITLAB_TOKEN_AUTH}" \
+    "${GITLAB_API_ENDPOINT}/projects/${project}/releases?per_page=1" | jq -r '.[0]'
+}
+
+function gitlab_check_release() {
+  project="$1"
+  release="$2"
+
+  last_version=$(cat "${PROJECT_LIST}" | grep "${project}" | awk -F',' '{ print $3 }')
+  version=$(echo "${release}" | jq -r '.tag_name')
+
+  if [ "${last_version}" != "${version}" ]; then
+    echo "New version found for ${project}: ${version}"
+    url=$(echo "${release}" | jq -r '.assets.links[0].url')
+
+    notify "${project}" "${version}" "${url}"
+
+    clean_project=$(echo "${project}" | sed -e 's/\//\\\//g')
+    sed -i 's/,\('${clean_project}'\),[^,]*$/,\1,'${version}'/g' "${PROJECT_LIST}"
+  fi
+}
+
+function gitlab_check_projects() {
+  gitlab_projects="$1"
+
+  while read project; do
+    project=$(echo "${project}" | awk -F',' '{ print $2 }')
+    echo "Checking : ${project}"
+
+    release=$(gitlab_get_release "${project}")
+
+    gitlab_check_release "${project}" "${release}"
+  done <<< "${gitlab_projects}"
+}
+
+##########
+## MAIN ##
+##########
+
+cat <<EOF
+##################################
+## $(date) ##
+##################################
+EOF
+
+sms_check_auth
+
+github_projects=$(cat "${PROJECT_LIST}" | grep "github")
+if [ "$?" -eq "0" ]; then
+  github_check_auth
+  github_check_projects "${github_projects}"
+fi
+
+gitlab_projects=$(cat "${PROJECT_LIST}" | grep "gitlab")
+if [ "$?" -eq "0" ]; then
+  gitlab_check_auth
+  gitlab_check_projects "${gitlab_projects}"
+fi
